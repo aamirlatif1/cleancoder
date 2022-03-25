@@ -4,6 +4,7 @@ import (
 	"errors"
 	"github.com/google/uuid"
 	. "github.com/smartystreets/goconvey/convey"
+	"sort"
 	"testing"
 )
 
@@ -43,7 +44,8 @@ func TestPresentNoCodeCasts(t *testing.T) {
 
 		So(gatekeeper.loggedInUser.Username, ShouldEqual, username)
 		Convey("there will be no codecasts presented", func() {
-			codecasts := usecase.PreentCodecasts()
+			user, _ := app.gateway.FindUser(username)
+			codecasts := usecase.PreentCodecasts(user)
 			So(codecasts, ShouldBeEmpty)
 		})
 	})
@@ -88,26 +90,21 @@ func TestPrentViewableCodecasts(t *testing.T) {
 	})
 
 	Convey("then the following codecasts will be presented for U", t, func() {
-		viewableCodecasts := []struct {
-			title        string
-			picture      string
-			description  string
-			viewable     bool
-			downloadable bool
-		}{
-			{"C", "C", "C", false, false},
-			{"A", "A", "A", true, false},
-			{"B", "B", "B", false, false},
+		expectedPc := []PresentableCodecast{
+			{"C", "C", "C", "2/18/2022", false, false},
+			{"A", "A", "A", "3/1/2022", true, false},
+			{"B", "B", "B", "3/2/2022", false, false},
 		}
-		_ = viewableCodecasts
+		actualPc := usecase.PreentCodecasts(&gatekeeper.loggedInUser)
+		So(actualPc, ShouldResemble, expectedPc)
 	})
 
 }
 
 func saveCodecast(title, publishedDate string) {
 	codecast := CodeCast{
-		Title:         title,
-		PublishedDate: publishedDate,
+		Title:           title,
+		PublicationDate: publishedDate,
 	}
 	app.gateway.Save(&codecast)
 }
@@ -150,21 +147,39 @@ func (m *mockGateway) FindUser(username string) (*User, error) {
 	return nil, errors.New("resource not found")
 }
 
-func (m *mockGateway) SaveUser(user *User) {
-	if user.ID == "" {
-		user.ID = uuid.NewString()
-	}
+func (m *mockGateway) SaveUser(user *User) *User {
+	establishID(user)
 	m.users = append(m.users, *user)
-
+	return user
 }
 
-func (m *mockGateway) Save(codecast *CodeCast) {
-	m.codecasts = append(m.codecasts, *codecast)
+func (m *mockGateway) Save(codecast *CodeCast) *CodeCast {
+	if codecast.ID == "" {
+		establishID(codecast)
+		m.codecasts = append(m.codecasts, *codecast)
+	} else {
+		m.updateCodeCast(codecast)
+	}
+	return codecast
+}
+
+func (m *mockGateway) updateCodeCast(codecast *CodeCast) {
+	for i, cc := range m.codecasts {
+		if cc.ID == codecast.ID {
+			p := &m.codecasts[i]
+			p.Title = codecast.Title
+			p.PublicationDate = codecast.PublicationDate
+			break
+		}
+	}
 }
 
 func (m *mockGateway) FindAllCodecasts() []CodeCast {
 	cc := make([]CodeCast, len(m.codecasts))
 	copy(cc, m.codecasts)
+	sort.SliceStable(cc, func(i, j int) bool {
+		return cc[i].PublicationDate < cc[j].PublicationDate
+	})
 	return cc
 }
 
@@ -180,4 +195,10 @@ func remove(codecasts []CodeCast, key CodeCast) []CodeCast {
 		}
 	}
 	return codecasts
+}
+
+func establishID(entity Entity) {
+	if entity.GetID() == "" {
+		entity.SetID(uuid.NewString())
+	}
 }
