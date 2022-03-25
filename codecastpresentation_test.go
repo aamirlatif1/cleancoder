@@ -7,16 +7,24 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aamirlatif1/cleancoder/entity"
+
 	"github.com/google/uuid"
 	. "github.com/smartystreets/goconvey/convey"
 )
 
 var (
 	app = application{
-		gateway: &mockGateway{},
+		userGateway:     &inMemoryUserGateway{},
+		codecastGateway: &inMemoryCodecastGateway{},
+		licenseGateway:  &inMemoryLicenseGateway{},
 	}
 	username = "U"
-	usecase  = PresentCodecastUsecase{gateway: app.gateway}
+	usecase  = PresentCodecastUsecase{
+		userGateway:     app.userGateway,
+		codecastGateway: app.codecastGateway,
+		licenseGateway:  app.licenseGateway,
+	}
 )
 
 var gatekeeper Gatekeeper
@@ -24,20 +32,20 @@ var gatekeeper Gatekeeper
 func TestPresentNoCodeCasts(t *testing.T) {
 
 	Convey("Given no codecasts", t, func() {
-		codecasts := app.gateway.FindAllCodecastsSortedChronologically()
+		codecasts := app.codecastGateway.FindAllCodecastsSortedChronologically()
 		for _, c := range codecasts {
-			_ = app.gateway.Delete(&c)
+			_ = app.codecastGateway.Delete(&c)
 		}
-		So(app.gateway.FindAllCodecastsSortedChronologically(), ShouldBeEmpty)
+		So(app.codecastGateway.FindAllCodecastsSortedChronologically(), ShouldBeEmpty)
 	})
 
 	Convey("Given user U", t, func() {
-		user := User{Username: username}
-		app.gateway.SaveUser(&user)
+		user := entity.User{Username: username}
+		app.userGateway.SaveUser(&user)
 	})
 
 	Convey("With user U logged in", t, func() {
-		user, _ := app.gateway.FindUser(username)
+		user, _ := app.userGateway.FindUser(username)
 		So(user, ShouldNotBeNil)
 		gatekeeper.SetLoggedInUser(user)
 	})
@@ -46,7 +54,7 @@ func TestPresentNoCodeCasts(t *testing.T) {
 
 		So(gatekeeper.loggedInUser.Username, ShouldEqual, username)
 		Convey("there will be no codecasts presented", func() {
-			user, _ := app.gateway.FindUser(username)
+			user, _ := app.userGateway.FindUser(username)
 			codecasts := usecase.PreentCodecasts(user)
 			So(codecasts, ShouldBeEmpty)
 		})
@@ -70,37 +78,37 @@ func TestPrentViewableCodecasts(t *testing.T) {
 	})
 
 	Convey("Given user U", t, func() {
-		user := User{Username: username}
-		app.gateway.SaveUser(&user)
+		user := entity.User{Username: username}
+		app.userGateway.SaveUser(&user)
 	})
 
 	Convey("with user U logged in", t, func() {
-		user, _ := app.gateway.FindUser(username)
+		user, _ := app.userGateway.FindUser(username)
 		So(user, ShouldNotBeNil)
 		gatekeeper.SetLoggedInUser(user)
 	})
 
 	Convey("and with license for U able to view A", t, func() {
-		user, _ := app.gateway.FindUser(username)
-		codecast, _ := app.gateway.FindCodecastByTitle("A")
-		liccense := License{
+		user, _ := app.userGateway.FindUser(username)
+		codecast, _ := app.codecastGateway.FindCodecastByTitle("A")
+		liccense := entity.License{
 			User:     *user,
 			Codecast: *codecast,
 			Type:     Viewing,
 		}
-		app.gateway.SaveLicense(&liccense)
+		app.licenseGateway.SaveLicense(&liccense)
 		So(usecase.IsLicenseToViewCodecast(user, codecast), ShouldBeTrue)
 	})
 
 	Convey("and with viewable and downloadable license for U able to view and download B", t, func() {
-		user, _ := app.gateway.FindUser(username)
-		codecast, _ := app.gateway.FindCodecastByTitle("B")
-		app.gateway.SaveLicense(&License{
+		user, _ := app.userGateway.FindUser(username)
+		codecast, _ := app.codecastGateway.FindCodecastByTitle("B")
+		app.licenseGateway.SaveLicense(&entity.License{
 			User:     *user,
 			Codecast: *codecast,
 			Type:     Viewing,
 		})
-		app.gateway.SaveLicense(&License{
+		app.licenseGateway.SaveLicense(&entity.License{
 			User:     *user,
 			Codecast: *codecast,
 			Type:     Downloading,
@@ -129,21 +137,23 @@ func convertDate(date string) time.Time {
 }
 
 func saveCodecast(title string, publishedDate time.Time) {
-	codecast := Codecast{
+	codecast := entity.Codecast{
 		Title:           title,
 		PublicationDate: publishedDate,
 	}
-	app.gateway.Save(&codecast)
+	app.codecastGateway.Save(&codecast)
 }
 
-type mockGateway struct {
-	codecasts []Codecast
-	users     []User
-	licenses  []License
+type inMemoryLicenseGateway struct {
+	licenses []entity.License
 }
 
-func (m *mockGateway) FindLicensesForUserAndCodecast(user *User, codecast *Codecast) []License {
-	var licenses []License
+func (m *inMemoryLicenseGateway) SaveLicense(liccense *entity.License) {
+	m.licenses = append(m.licenses, *liccense)
+}
+
+func (m *inMemoryLicenseGateway) FindLicensesForUserAndCodecast(user *entity.User, codecast *entity.Codecast) []entity.License {
+	var licenses = make([]entity.License, 0)
 	for _, license := range m.licenses {
 		if license.User.IsSame(user) && license.Codecast.IsSame(codecast) {
 			licenses = append(licenses, license)
@@ -152,35 +162,25 @@ func (m *mockGateway) FindLicensesForUserAndCodecast(user *User, codecast *Codec
 	return licenses
 }
 
-func (m *mockGateway) SaveLicense(liccense *License) {
-	m.licenses = append(m.licenses, *liccense)
+type inMemoryCodecastGateway struct {
+	codecasts []entity.Codecast
 }
 
-func (m *mockGateway) FindCodecastByTitle(title string) (*Codecast, error) {
-	for _, codecast := range m.codecasts {
-		if codecast.Title == title {
-			return &codecast, nil
-		}
-	}
-	return nil, errors.New("resource not found")
+func (m *inMemoryCodecastGateway) FindAllCodecastsSortedChronologically() []entity.Codecast {
+	cc := make([]entity.Codecast, len(m.codecasts))
+	copy(cc, m.codecasts)
+	sort.SliceStable(cc, func(i, j int) bool {
+		return cc[i].PublicationDate.Unix() < cc[j].PublicationDate.Unix()
+	})
+	return cc
 }
 
-func (m *mockGateway) FindUser(username string) (*User, error) {
-	for _, user := range m.users {
-		if user.Username == username {
-			return &user, nil
-		}
-	}
-	return nil, errors.New("resource not found")
+func (m *inMemoryCodecastGateway) Delete(codecast *entity.Codecast) error {
+	m.codecasts = remove(m.codecasts, *codecast)
+	return nil
 }
 
-func (m *mockGateway) SaveUser(user *User) *User {
-	establishID(user)
-	m.users = append(m.users, *user)
-	return user
-}
-
-func (m *mockGateway) Save(codecast *Codecast) *Codecast {
+func (m *inMemoryCodecastGateway) Save(codecast *entity.Codecast) *entity.Codecast {
 	if codecast.ID == "" {
 		establishID(codecast)
 		m.codecasts = append(m.codecasts, *codecast)
@@ -190,7 +190,16 @@ func (m *mockGateway) Save(codecast *Codecast) *Codecast {
 	return codecast
 }
 
-func (m *mockGateway) updateCodeCast(codecast *Codecast) {
+func (m *inMemoryCodecastGateway) FindCodecastByTitle(title string) (*entity.Codecast, error) {
+	for _, codecast := range m.codecasts {
+		if codecast.Title == title {
+			return &codecast, nil
+		}
+	}
+	return nil, errors.New("resource not found")
+}
+
+func (m *inMemoryCodecastGateway) updateCodeCast(codecast *entity.Codecast) {
 	for i, cc := range m.codecasts {
 		if cc.ID == codecast.ID {
 			p := &m.codecasts[i]
@@ -201,21 +210,26 @@ func (m *mockGateway) updateCodeCast(codecast *Codecast) {
 	}
 }
 
-func (m *mockGateway) FindAllCodecastsSortedChronologically() []Codecast {
-	cc := make([]Codecast, len(m.codecasts))
-	copy(cc, m.codecasts)
-	sort.SliceStable(cc, func(i, j int) bool {
-		return cc[i].PublicationDate.Unix() < cc[j].PublicationDate.Unix()
-	})
-	return cc
+type inMemoryUserGateway struct {
+	users []entity.User
 }
 
-func (m *mockGateway) Delete(codecast *Codecast) error {
-	m.codecasts = remove(m.codecasts, *codecast)
-	return nil
+func (m *inMemoryUserGateway) FindUser(username string) (*entity.User, error) {
+	for _, user := range m.users {
+		if user.Username == username {
+			return &user, nil
+		}
+	}
+	return nil, errors.New("resource not found")
 }
 
-func remove(codecasts []Codecast, key Codecast) []Codecast {
+func (m *inMemoryUserGateway) SaveUser(user *entity.User) *entity.User {
+	establishID(user)
+	m.users = append(m.users, *user)
+	return user
+}
+
+func remove(codecasts []entity.Codecast, key entity.Codecast) []entity.Codecast {
 	for i, v := range codecasts {
 		if v == key {
 			return append(codecasts[:i], codecasts[i+1:]...)
@@ -224,7 +238,7 @@ func remove(codecasts []Codecast, key Codecast) []Codecast {
 	return codecasts
 }
 
-func establishID(entity Entity) {
+func establishID(entity entity.Entity) {
 	if entity.GetID() == "" {
 		entity.SetID(uuid.NewString())
 	}

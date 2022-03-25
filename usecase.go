@@ -1,14 +1,21 @@
 package cleancoder
 
+import (
+	"github.com/aamirlatif1/cleancoder/entity"
+	"github.com/aamirlatif1/cleancoder/persistance"
+)
+
 const dateLayout = "01/02/2006"
 
 type PresentCodecastUsecase struct {
-	gateway Gateway
+	userGateway     persistance.UserGateway
+	codecastGateway persistance.CodecastGateway
+	licenseGateway  persistance.LicenseGateway
 }
 
-func (u *PresentCodecastUsecase) PreentCodecasts(user *User) []PresentableCodecast {
+func (u *PresentCodecastUsecase) PreentCodecasts(user *entity.User) []PresentableCodecast {
 	pccs := []PresentableCodecast{}
-	allCodecasts := u.gateway.FindAllCodecastsSortedChronologically()
+	allCodecasts := u.codecastGateway.FindAllCodecastsSortedChronologically()
 
 	for _, codecast := range allCodecasts {
 		pccs = append(pccs, u.formatCodecast(user, codecast))
@@ -16,7 +23,7 @@ func (u *PresentCodecastUsecase) PreentCodecasts(user *User) []PresentableCodeca
 	return pccs
 }
 
-func (u *PresentCodecastUsecase) formatCodecast(user *User, codecast Codecast) PresentableCodecast {
+func (u *PresentCodecastUsecase) formatCodecast(user *entity.User, codecast entity.Codecast) PresentableCodecast {
 	return PresentableCodecast{
 		Title:           codecast.Title,
 		Description:     codecast.Title,
@@ -27,16 +34,16 @@ func (u *PresentCodecastUsecase) formatCodecast(user *User, codecast Codecast) P
 	}
 }
 
-func (u *PresentCodecastUsecase) IsLicenseToViewCodecast(user *User, codecast *Codecast) bool {
+func (u *PresentCodecastUsecase) IsLicenseToViewCodecast(user *entity.User, codecast *entity.Codecast) bool {
 	return u.licenseFor(user, codecast, Viewing)
 }
 
-func (u *PresentCodecastUsecase) IsLicenseToDownloadCodecast(user *User, codecast *Codecast) bool {
+func (u *PresentCodecastUsecase) IsLicenseToDownloadCodecast(user *entity.User, codecast *entity.Codecast) bool {
 	return u.licenseFor(user, codecast, Downloading)
 }
 
-func (u *PresentCodecastUsecase) licenseFor(user *User, codecast *Codecast, licenseType int8) bool {
-	licenses := u.gateway.FindLicensesForUserAndCodecast(user, codecast)
+func (u *PresentCodecastUsecase) licenseFor(user *entity.User, codecast *entity.Codecast, licenseType int8) bool {
+	licenses := u.licenseGateway.FindLicensesForUserAndCodecast(user, codecast)
 	for _, license := range licenses {
 		if license.Type == licenseType {
 			return true

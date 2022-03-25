@@ -1,4 +1,4 @@
-package cleancoder
+package entity
 
 import (
 	"testing"

@@ -4,14 +4,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aamirlatif1/cleancoder/entity"
+
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/smartystreets/gunit"
 )
 
 type PresentCodeCastUsecaseFixture struct {
 	*gunit.Fixture
-	user     *User
-	codecast *Codecast
+	user     *entity.User
+	codecast *entity.Codecast
 	usecase  PresentCodecastUsecase
 }
 
@@ -21,12 +23,14 @@ func TestPresentCodeCastUsecaseFixture(t *testing.T) {
 
 func (p *PresentCodeCastUsecaseFixture) Setup() {
 	p.usecase = PresentCodecastUsecase{
-		gateway: &mockGateway{},
+		userGateway:     &inMemoryUserGateway{},
+		licenseGateway:  &inMemoryLicenseGateway{},
+		codecastGateway: &inMemoryCodecastGateway{},
 	}
-	u := User{Username: "User"}
-	p.user = p.usecase.gateway.SaveUser(&u)
+	u := entity.User{Username: "User"}
+	p.user = p.usecase.userGateway.SaveUser(&u)
 	t, _ := time.Parse("02/01/2006", "3/1/2022")
-	p.codecast = p.usecase.gateway.Save(&Codecast{Title: "A", PublicationDate: t})
+	p.codecast = p.usecase.codecastGateway.Save(&entity.Codecast{Title: "A", PublicationDate: t})
 }
 
 func (p *PresentCodeCastUsecaseFixture) TestUserWithoutViewableLicense_shouldNotViewCodecast() {
@@ -34,19 +38,19 @@ func (p *PresentCodeCastUsecaseFixture) TestUserWithoutViewableLicense_shouldNot
 }
 
 func (p *PresentCodeCastUsecaseFixture) TestUserWithViewableLicense_canViewCodecast() {
-	p.usecase.gateway.SaveLicense(&License{User: *p.user, Codecast: *p.codecast, Type: Viewing})
+	p.usecase.licenseGateway.SaveLicense(&entity.License{User: *p.user, Codecast: *p.codecast, Type: Viewing})
 	p.So(p.usecase.IsLicenseToViewCodecast(p.user, p.codecast), ShouldBeTrue)
 }
 
 func (p *PresentCodeCastUsecaseFixture) TestUserWithoutViewableLicense_canViewOthersCodecast() {
-	user2 := User{Username: "User2"}
-	license := License{User: *p.user, Codecast: *p.codecast}
-	p.usecase.gateway.SaveLicense(&license)
+	user2 := entity.User{Username: "User2"}
+	license := entity.License{User: *p.user, Codecast: *p.codecast, Type: Viewing}
+	p.usecase.licenseGateway.SaveLicense(&license)
 	p.So(usecase.IsLicenseToViewCodecast(&user2, p.codecast), ShouldBeFalse)
 }
 
 func (p *PresentCodeCastUsecaseFixture) TestPresentingNoCodecasts() {
-	_ = p.usecase.gateway.Delete(p.codecast)
+	_ = p.usecase.codecastGateway.Delete(p.codecast)
 	codecasts := p.usecase.PreentCodecasts(p.user)
 	p.So(codecasts, ShouldBeEmpty)
 }
@@ -54,7 +58,7 @@ func (p *PresentCodeCastUsecaseFixture) TestPresentingNoCodecasts() {
 func (p *PresentCodeCastUsecaseFixture) TestPresentOneCodecast() {
 	p.codecast.Title = "Some Title"
 	p.codecast.PublicationDate = convertDate("02/01/2022")
-	p.usecase.gateway.Save(p.codecast)
+	p.usecase.codecastGateway.Save(p.codecast)
 	presentableCodecasts := p.usecase.PreentCodecasts(p.user)
 	p.So(len(presentableCodecasts), ShouldEqual, 1)
 	pc := presentableCodecasts[0]
@@ -70,7 +74,7 @@ func (p *PresentCodeCastUsecaseFixture) TestPresentedCodecastIsNotViewableIfNoLi
 }
 
 func (p *PresentCodeCastUsecaseFixture) TestPresentedCodecastIsViewableIfHaveLicense() {
-	p.usecase.gateway.SaveLicense(&License{User: *p.user, Codecast: *p.codecast, Type: Viewing})
+	p.usecase.licenseGateway.SaveLicense(&entity.License{User: *p.user, Codecast: *p.codecast, Type: Viewing})
 	presentableCodecasts := p.usecase.PreentCodecasts(p.user)
 	p.So(len(presentableCodecasts), ShouldEqual, 1)
 	pc := presentableCodecasts[0]
@@ -78,7 +82,7 @@ func (p *PresentCodeCastUsecaseFixture) TestPresentedCodecastIsViewableIfHaveLic
 }
 
 func (p *PresentCodeCastUsecaseFixture) TestPresentedCodecastIsDownloadableIfHaveDownloadLicense() {
-	p.usecase.gateway.SaveLicense(&License{User: *p.user, Codecast: *p.codecast, Type: Downloading})
+	p.usecase.licenseGateway.SaveLicense(&entity.License{User: *p.user, Codecast: *p.codecast, Type: Downloading})
 	presentableCodecasts := p.usecase.PreentCodecasts(p.user)
 	p.So(len(presentableCodecasts), ShouldEqual, 1)
 	pc := presentableCodecasts[0]
