@@ -1,5 +1,12 @@
 package cleancoder
 
+import "time"
+
+const (
+	Viewing     int8 = 1
+	Downloading      = 2
+)
+
 type application struct {
 	gateway Gateway
 }
@@ -10,21 +17,21 @@ type Entity interface {
 	IsSame(entity Entity) bool
 }
 
-type CodeCast struct {
+type Codecast struct {
 	ID              string
 	Title           string
-	PublicationDate string
+	PublicationDate time.Time
 }
 
-func (c *CodeCast) SetID(id string) {
+func (c *Codecast) SetID(id string) {
 	c.ID = id
 }
 
-func (c *CodeCast) GetID() string {
+func (c *Codecast) GetID() string {
 	return c.ID
 }
 
-func (c *CodeCast) IsSame(entity Entity) bool {
+func (c *Codecast) IsSame(entity Entity) bool {
 	return c.ID != "" && c.ID == entity.GetID()
 }
 
@@ -55,14 +62,14 @@ func (u *User) IsSame(entity Entity) bool {
 }
 
 type Gateway interface {
-	FindAllCodecasts() []CodeCast
-	Delete(codecast *CodeCast) error
-	Save(codecast *CodeCast) *CodeCast
+	FindAllCodecastsSortedChronologically() []Codecast
+	Delete(codecast *Codecast) error
+	Save(codecast *Codecast) *Codecast
 	SaveUser(user *User) *User
 	FindUser(username string) (*User, error)
-	FindCodecastByTitle(title string) (*CodeCast, error)
+	FindCodecastByTitle(title string) (*Codecast, error)
 	SaveLicense(liccense *License)
-	FindLicensesForUserAndCodecast(user *User, codecast *CodeCast) []License
+	FindLicensesForUserAndCodecast(user *User, codecast *Codecast) []License
 }
 
 type Gatekeeper struct {
@@ -75,5 +82,6 @@ func (g *Gatekeeper) SetLoggedInUser(user *User) {
 
 type License struct {
 	User     User
-	codecast CodeCast
+	Codecast Codecast
+	Type     int8
 }

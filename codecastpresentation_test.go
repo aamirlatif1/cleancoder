@@ -2,19 +2,21 @@ package cleancoder
 
 import (
 	"errors"
-	"github.com/google/uuid"
-	. "github.com/smartystreets/goconvey/convey"
+	"fmt"
 	"sort"
 	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	. "github.com/smartystreets/goconvey/convey"
 )
 
 var (
 	app = application{
 		gateway: &mockGateway{},
 	}
-	username      = "U"
-	codecastTitle = "A"
-	usecase       = PresentCodecastUsecase{gateway: app.gateway}
+	username = "U"
+	usecase  = PresentCodecastUsecase{gateway: app.gateway}
 )
 
 var gatekeeper Gatekeeper
@@ -22,11 +24,11 @@ var gatekeeper Gatekeeper
 func TestPresentNoCodeCasts(t *testing.T) {
 
 	Convey("Given no codecasts", t, func() {
-		codecasts := app.gateway.FindAllCodecasts()
+		codecasts := app.gateway.FindAllCodecastsSortedChronologically()
 		for _, c := range codecasts {
 			_ = app.gateway.Delete(&c)
 		}
-		So(app.gateway.FindAllCodecasts(), ShouldBeEmpty)
+		So(app.gateway.FindAllCodecastsSortedChronologically(), ShouldBeEmpty)
 	})
 
 	Convey("Given user U", t, func() {
@@ -58,12 +60,12 @@ func TestPrentViewableCodecasts(t *testing.T) {
 			title     string
 			published string
 		}{
-			{"A", "3/1/2022"},
-			{"B", "3/2/2022"},
-			{"C", "2/18/2022"},
+			{"A", "03/01/2022"},
+			{"B", "03/02/2022"},
+			{"C", "02/18/2022"},
 		}
 		for _, record := range records {
-			saveCodecast(record.title, record.published)
+			saveCodecast(record.title, convertDate(record.published))
 		}
 	})
 
@@ -80,20 +82,37 @@ func TestPrentViewableCodecasts(t *testing.T) {
 
 	Convey("and with license for U able to view A", t, func() {
 		user, _ := app.gateway.FindUser(username)
-		codecast, _ := app.gateway.FindCodecastByTitle(codecastTitle)
+		codecast, _ := app.gateway.FindCodecastByTitle("A")
 		liccense := License{
 			User:     *user,
-			codecast: *codecast,
+			Codecast: *codecast,
+			Type:     Viewing,
 		}
 		app.gateway.SaveLicense(&liccense)
-		So(usecase.IsLicenseToviewCodecast(user, codecast), ShouldBeTrue)
+		So(usecase.IsLicenseToViewCodecast(user, codecast), ShouldBeTrue)
+	})
+
+	Convey("and with viewable and downloadable license for U able to view and download B", t, func() {
+		user, _ := app.gateway.FindUser(username)
+		codecast, _ := app.gateway.FindCodecastByTitle("B")
+		app.gateway.SaveLicense(&License{
+			User:     *user,
+			Codecast: *codecast,
+			Type:     Viewing,
+		})
+		app.gateway.SaveLicense(&License{
+			User:     *user,
+			Codecast: *codecast,
+			Type:     Downloading,
+		})
+		So(usecase.IsLicenseToViewCodecast(user, codecast), ShouldBeTrue)
 	})
 
 	Convey("then the following codecasts will be presented for U", t, func() {
 		expectedPc := []PresentableCodecast{
-			{"C", "C", "C", "2/18/2022", false, false},
-			{"A", "A", "A", "3/1/2022", true, false},
-			{"B", "B", "B", "3/2/2022", false, false},
+			{"C", "C", "C", "02/18/2022", false, false},
+			{"A", "A", "A", "03/01/2022", true, false},
+			{"B", "B", "B", "03/02/2022", true, true},
 		}
 		actualPc := usecase.PreentCodecasts(&gatekeeper.loggedInUser)
 		So(actualPc, ShouldResemble, expectedPc)
@@ -101,8 +120,16 @@ func TestPrentViewableCodecasts(t *testing.T) {
 
 }
 
-func saveCodecast(title, publishedDate string) {
-	codecast := CodeCast{
+func convertDate(date string) time.Time {
+	t, err := time.Parse(dateLayout, date)
+	if err != nil {
+		fmt.Println(err)
+	}
+	return t
+}
+
+func saveCodecast(title string, publishedDate time.Time) {
+	codecast := Codecast{
 		Title:           title,
 		PublicationDate: publishedDate,
 	}
@@ -110,15 +137,15 @@ func saveCodecast(title, publishedDate string) {
 }
 
 type mockGateway struct {
-	codecasts []CodeCast
+	codecasts []Codecast
 	users     []User
 	licenses  []License
 }
 
-func (m *mockGateway) FindLicensesForUserAndCodecast(user *User, codecast *CodeCast) []License {
+func (m *mockGateway) FindLicensesForUserAndCodecast(user *User, codecast *Codecast) []License {
 	var licenses []License
 	for _, license := range m.licenses {
-		if license.User.IsSame(user) && license.codecast.IsSame(codecast) {
+		if license.User.IsSame(user) && license.Codecast.IsSame(codecast) {
 			licenses = append(licenses, license)
 		}
 	}
@@ -129,7 +156,7 @@ func (m *mockGateway) SaveLicense(liccense *License) {
 	m.licenses = append(m.licenses, *liccense)
 }
 
-func (m *mockGateway) FindCodecastByTitle(title string) (*CodeCast, error) {
+func (m *mockGateway) FindCodecastByTitle(title string) (*Codecast, error) {
 	for _, codecast := range m.codecasts {
 		if codecast.Title == title {
 			return &codecast, nil
@@ -153,7 +180,7 @@ func (m *mockGateway) SaveUser(user *User) *User {
 	return user
 }
 
-func (m *mockGateway) Save(codecast *CodeCast) *CodeCast {
+func (m *mockGateway) Save(codecast *Codecast) *Codecast {
 	if codecast.ID == "" {
 		establishID(codecast)
 		m.codecasts = append(m.codecasts, *codecast)
@@ -163,7 +190,7 @@ func (m *mockGateway) Save(codecast *CodeCast) *CodeCast {
 	return codecast
 }
 
-func (m *mockGateway) updateCodeCast(codecast *CodeCast) {
+func (m *mockGateway) updateCodeCast(codecast *Codecast) {
 	for i, cc := range m.codecasts {
 		if cc.ID == codecast.ID {
 			p := &m.codecasts[i]
@@ -174,21 +201,21 @@ func (m *mockGateway) updateCodeCast(codecast *CodeCast) {
 	}
 }
 
-func (m *mockGateway) FindAllCodecasts() []CodeCast {
-	cc := make([]CodeCast, len(m.codecasts))
+func (m *mockGateway) FindAllCodecastsSortedChronologically() []Codecast {
+	cc := make([]Codecast, len(m.codecasts))
 	copy(cc, m.codecasts)
 	sort.SliceStable(cc, func(i, j int) bool {
-		return cc[i].PublicationDate < cc[j].PublicationDate
+		return cc[i].PublicationDate.Unix() < cc[j].PublicationDate.Unix()
 	})
 	return cc
 }
 
-func (m *mockGateway) Delete(codecast *CodeCast) error {
+func (m *mockGateway) Delete(codecast *Codecast) error {
 	m.codecasts = remove(m.codecasts, *codecast)
 	return nil
 }
 
-func remove(codecasts []CodeCast, key CodeCast) []CodeCast {
+func remove(codecasts []Codecast, key Codecast) []Codecast {
 	for i, v := range codecasts {
 		if v == key {
 			return append(codecasts[:i], codecasts[i+1:]...)

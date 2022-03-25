@@ -1,9 +1,10 @@
 package cleancoder
 
 import (
+	"testing"
+
 	. "github.com/smartystreets/assertions"
 	"github.com/smartystreets/gunit"
-	"testing"
 )
 
 func TestUserFixture(t *testing.T) {
@@ -46,5 +47,5 @@ func (u *EntityFixture) TestEntityWithNullIdsAreNeverSame() {
 }
 
 func newEntity() Entity {
-	return &CodeCast{}
+	return &Codecast{}
 }
