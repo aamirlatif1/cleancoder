@@ -3,6 +3,8 @@ package cleancoder
 import (
 	"errors"
 	"fmt"
+	"github.com/aamirlatif1/cleancoder/data"
+	"github.com/aamirlatif1/cleancoder/usecase"
 	"sort"
 	"testing"
 	"time"
@@ -13,6 +15,8 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 )
 
+const dateLayout = "01/02/2006"
+
 var (
 	app = application{
 		userGateway:     &inMemoryUserGateway{},
@@ -20,10 +24,10 @@ var (
 		licenseGateway:  &inMemoryLicenseGateway{},
 	}
 	username = "U"
-	usecase  = PresentCodecastUsecase{
-		userGateway:     app.userGateway,
-		codecastGateway: app.codecastGateway,
-		licenseGateway:  app.licenseGateway,
+	uc       = usecase.PresentCodecast{
+		UserGateway:     app.userGateway,
+		CodecastGateway: app.codecastGateway,
+		LicenseGateway:  app.licenseGateway,
 	}
 )
 
@@ -55,7 +59,7 @@ func TestPresentNoCodeCasts(t *testing.T) {
 		So(gatekeeper.loggedInUser.Username, ShouldEqual, username)
 		Convey("there will be no codecasts presented", func() {
 			user, _ := app.userGateway.FindUser(username)
-			codecasts := usecase.PreentCodecasts(user)
+			codecasts := uc.PreentCodecasts(user)
 			So(codecasts, ShouldBeEmpty)
 		})
 	})
@@ -94,10 +98,10 @@ func TestPrentViewableCodecasts(t *testing.T) {
 		liccense := entity.License{
 			User:     *user,
 			Codecast: *codecast,
-			Type:     Viewing,
+			Type:     data.Viewing,
 		}
 		app.licenseGateway.SaveLicense(&liccense)
-		So(usecase.IsLicenseToViewCodecast(user, codecast), ShouldBeTrue)
+		So(uc.IsLicenseToViewCodecast(user, codecast), ShouldBeTrue)
 	})
 
 	Convey("and with viewable and downloadable license for U able to view and download B", t, func() {
@@ -106,23 +110,23 @@ func TestPrentViewableCodecasts(t *testing.T) {
 		app.licenseGateway.SaveLicense(&entity.License{
 			User:     *user,
 			Codecast: *codecast,
-			Type:     Viewing,
+			Type:     data.Viewing,
 		})
 		app.licenseGateway.SaveLicense(&entity.License{
 			User:     *user,
 			Codecast: *codecast,
-			Type:     Downloading,
+			Type:     data.Downloading,
 		})
-		So(usecase.IsLicenseToViewCodecast(user, codecast), ShouldBeTrue)
+		So(uc.IsLicenseToViewCodecast(user, codecast), ShouldBeTrue)
 	})
 
 	Convey("then the following codecasts will be presented for U", t, func() {
-		expectedPc := []PresentableCodecast{
+		expectedPc := []data.PresentableCodecast{
 			{"C", "C", "C", "02/18/2022", false, false},
 			{"A", "A", "A", "03/01/2022", true, false},
 			{"B", "B", "B", "03/02/2022", true, true},
 		}
-		actualPc := usecase.PreentCodecasts(&gatekeeper.loggedInUser)
+		actualPc := uc.PreentCodecasts(&gatekeeper.loggedInUser)
 		So(actualPc, ShouldResemble, expectedPc)
 	})
 
